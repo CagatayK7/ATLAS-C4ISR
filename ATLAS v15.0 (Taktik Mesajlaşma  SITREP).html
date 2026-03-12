@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ATLAS | TAKTİK SAHA KOORDİNASYON AĞI</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0a0d14;
+            --panel-bg: rgba(10, 15, 25, 0.9);
+            --primary: #0088ff; 
+            --danger: #ff3333;
+            --success: #11cc11; 
+            --stealth: #aa00ff; 
+            --warning: #ffaa00; /* SITREP Sarısı */
+            --route: #00ffff; 
+            --text-main: #f0f5ff;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body { margin: 0; padding: 0; overflow: hidden; background-color: var(--bg-color); color: var(--text-main); font-family: var(--font-family); }
+
+        /* --- MASAÜSTÜ ARAYÜZÜ --- */
+        #desktop-ui { display: none; width: 100vw; height: 100vh; position: relative; }
+        #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        .panel { position: absolute; background: var(--panel-bg); border: 1px solid var(--primary); backdrop-filter: blur(8px); padding: 20px; z-index: 10; border-radius: 4px; box-shadow: 0 0 15px rgba(0, 136, 255, 0.15);}
+        
+        .top-bar { top: 20px; left: 50%; transform: translateX(-50%); width: 90vw; max-width: 1400px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 26px; font-weight: bold; letter-spacing: 3px; text-shadow: 0 0 10px var(--primary); }
+        
+        .network-stats { display: flex; gap: 15px; align-items: center;}
+        .stat-box { background: rgba(0,0,0,0.6); padding: 10px 15px; border-radius: 5px; border: 1px solid var(--primary); text-align: center; min-width: 80px;}
+        .stat-val { font-size: 20px; font-weight: bold; color: var(--primary); font-family: monospace;}
+        
+        .demo-btn { background: var(--danger); color: #fff; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: inherit; font-size: 14px; box-shadow: 0 0 15px var(--danger); transition: 0.2s;}
+        .demo-btn:active { transform: scale(0.95); }
+
+        .region-panel { top: 120px; right: 20px; width: 220px; display: flex; flex-direction: column; gap: 10px;}
+        .region-btn { background: rgba(0, 136, 255, 0.1); border: 1px solid var(--primary); color: #fff; padding: 10px; cursor: pointer; text-align: left; font-size: 12px; font-family: inherit; transition: 0.2s; border-radius: 3px;}
+        .region-btn:hover { background: rgba(0, 136, 255, 0.3); }
+
+        .qr-panel { bottom: 20px; right: 20px; width: 220px; text-align: center; }
+        .qr-box { width: 140px; height: 140px; background: #fff; margin: 15px auto; padding: 10px; border-radius: 5px;}
+        .qr-box img { width: 100%; height: 100%; }
+
+        .log-panel { bottom: 20px; left: 20px; width: 450px; height: 280px; display: flex; flex-direction: column; }
+        .log-content { flex: 1; overflow-y: auto; font-size: 13px; line-height: 1.6; margin-top: 10px; padding-right: 5px; font-family: monospace;}
+        .log-entry { margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .log-entry.alert { color: var(--danger); font-weight: bold; }
+        .log-entry.stealth { color: var(--stealth); font-weight: bold; }
+        .log-entry.volunteer { color: var(--success); font-weight: bold; }
+        .log-entry.sitrep { color: var(--warning); font-weight: bold; }
+        .log-id { color: var(--primary); font-weight: bold; }
+
+        .radar-ping-sos { width: 16px; height: 16px; background: var(--danger); border-radius: 50%; position: relative; box-shadow: 0 0 15px var(--danger); border: 2px solid #fff;}
+        .radar-ping-sos::after { content: ''; position: absolute; top: -17px; left: -17px; width: 50px; height: 50px; border: 2px solid var(--danger); border-radius: 50%; animation: ping-wave 2s infinite ease-out; }
+        .radar-ping-vol { width: 16px; height: 16px; background: var(--success); border-radius: 50%; position: relative; box-shadow: 0 0 15px var(--success); border: 2px solid #fff;}
+        .radar-ping-vol::after { content: ''; position: absolute; top: -17px; left: -17px; width: 50px; height: 50px; border: 2px solid var(--success); border-radius: 50%; animation: ping-wave 2.5s infinite ease-out; }
+        .radar-ping-stealth { width: 16px; height: 16px; background: var(--stealth); border-radius: 50%; position: relative; box-shadow: 0 0 20px var(--stealth); border: 2px solid #000;}
+        .radar-ping-stealth::after { content: ''; position: absolute; top: -17px; left: -17px; width: 50px; height: 50px; border: 2px solid var(--stealth); border-radius: 50%; animation: ping-wave 1s infinite ease-out; }
+        @keyframes ping-wave { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
+
+        #hazard-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; width: 350px; text-align: center; }
+        .hazard-title { font-size: 18px; color: var(--danger); margin-bottom: 15px; font-weight: bold; border-bottom: 1px solid var(--danger); padding-bottom: 5px;}
+        .hazard-select { width: 100%; padding: 12px; background: rgba(0,0,0,0.8); color: #fff; border: 1px solid #555; border-radius: 4px; font-family: inherit; font-size: 14px; margin-bottom: 20px; outline: none; }
+        .hazard-btn-group { display: flex; gap: 10px; }
+        .hazard-btn { flex: 1; padding: 12px; font-family: inherit; font-weight: bold; cursor: pointer; border-radius: 4px; border: none; }
+        .hazard-btn-cancel { background: #444; color: #fff; }
+        .hazard-btn-create { background: var(--danger); color: #fff; }
+
+        /* CCTV EKRANI */
+        #cctv-panel { display: none; position: absolute; top: 120px; left: 20px; width: 450px; height: 320px; background: #000; border: 2px solid var(--primary); z-index: 20; padding: 0; overflow: hidden; border-radius: 4px; box-shadow: 0 0 30px rgba(0, 136, 255, 0.4); }
+        .cctv-header { background: rgba(0,0,0,0.8); color: var(--primary); font-size: 12px; padding: 8px; position: absolute; top: 0; width: 100%; z-index: 2; font-weight: bold; display: flex; justify-content: space-between; box-sizing: border-box; border-bottom: 1px solid var(--primary);}
+        .cctv-image { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(100%) sepia(100%) hue-rotate(60deg) saturate(400%) contrast(1.3) brightness(1.2); }
+        .cctv-overlay { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; background: url('https://www.transparenttextures.com/patterns/stardust.png'); opacity: 0.6; z-index: 1;}
+        .cctv-crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; border: 1px solid rgba(0,255,0,0.4); border-radius: 50%; z-index: 1; display:flex; justify-content:center; align-items:center;}
+        .cctv-crosshair::before { content:''; width:2px; height:14px; background:rgba(0,255,0,0.6); position:absolute; top:-7px;}
+        .cctv-crosshair::after { content:''; width:14px; height:2px; background:rgba(0,255,0,0.6); position:absolute; left:-7px;}
+        .cctv-rec { position: absolute; top: 40px; right: 15px; color: red; font-size: 14px; font-weight: bold; z-index: 2; animation: blink 1s infinite; font-family: monospace; text-shadow: 0 0 5px red;}
+        .cctv-close { background: none; border: none; color: #fff; cursor: pointer; font-size: 14px; font-weight:bold;}
+        .cctv-close:hover { color: var(--danger); }
+        .cctv-footer { position: absolute; bottom: 10px; left: 15px; color: #0f0; font-size: 12px; z-index: 2; font-family: monospace; text-shadow: 1px 1px 0 #000; }
+
+        /* --- MOBİL KAYIT EKRANI --- */
+        #mobile-login-ui { display: none; width: 100vw; height: 100vh; background: #0a0d14; flex-direction: column; align-items: center; justify-content: flex-start; padding: 20px; box-sizing: border-box; overflow-y: auto;}
+        .login-box { background: rgba(15, 25, 40, 0.95); border: 1px solid var(--primary); padding: 25px; border-radius: 4px; width: 100%; max-width: 400px; box-shadow: 0 0 30px rgba(0, 136, 255, 0.1); margin: auto; margin-top: 20px; margin-bottom: 20px;}
+        .login-title { font-size: 20px; font-weight: bold; color: var(--primary); margin-bottom: 10px; text-align: center; letter-spacing: 1px;}
+        .login-desc { font-size: 12px; color: #aaa; margin-bottom: 20px; text-align: center; line-height: 1.5; }
+        
+        .form-group { margin-bottom: 15px; text-align: left; }
+        .form-group label { display: block; font-size: 11px; color: var(--primary); margin-bottom: 5px; letter-spacing: 1px; font-weight: bold;}
+        .form-group input { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid #444; color: #fff; padding: 12px; border-radius: 4px; box-sizing: border-box; font-family: inherit; font-size: 14px; outline: none; transition: 0.3s; }
+        .form-group input:focus { border-color: var(--primary); }
+
+        .checkbox-label { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #fff; cursor: pointer; padding: 12px; background: rgba(17, 204, 17, 0.1); border: 1px solid var(--success); border-radius: 4px; margin-top: 10px; font-weight: bold;}
+        .checkbox-label input { width: 20px; height: 20px; cursor: pointer; }
+        .cam-label { background: rgba(0, 136, 255, 0.1); border-color: var(--primary); margin-top: 20px;}
+
+        .skills-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .skill-cb { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #ddd; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 3px; cursor: pointer; border: 1px solid #333; transition: 0.2s;}
+        .skill-cb input { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--success); }
+        .equip-cb input { accent-color: var(--primary); }
+
+        .join-btn { width: 100%; padding: 15px; background: var(--primary); color: #fff; font-weight: bold; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px; font-family: inherit; letter-spacing: 1px;}
+
+        /* --- MOBİL KUMANDA ARAYÜZÜ --- */
+        #mobile-ui { display: none; width: 100vw; height: 100vh; background: #0a0d14; flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; text-align: center; overflow-y: auto;}
+        .mobile-title { font-size: 22px; color: var(--primary); margin-bottom: 5px; font-weight: bold; letter-spacing: 2px;}
+        .mobile-id { font-family: monospace; color: #fff; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 3px; margin-bottom: 10px; font-size: 14px; border: 1px solid #333;}
+        .mobile-role { font-size: 11px; color: var(--success); margin-bottom: 5px; font-weight: bold; letter-spacing: 1px; max-width: 90%; line-height: 1.4;}
+        .mobile-equip { font-size: 10px; color: #aaa; margin-bottom: 20px; max-width: 90%; line-height: 1.4;}
+        .mobile-status { font-size: 14px; color: #888; margin-bottom: 15px; height: 20px; }
+        
+        .btn-container { display: flex; flex-direction: column; gap: 15px; align-items: center; width: 100%; }
+
+        .reason-select { width: 90%; max-width: 280px; padding: 12px; background: #111; color: #fff; border: 1px solid #444; border-radius: 4px; font-family: inherit; font-size: 13px; outline: none; text-align: center;}
+        
+        .sos-btn { width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, #ff3333, #aa0000); border: 6px solid #ff5555; color: white; font-size: 20px; font-weight: bold; font-family: inherit; box-shadow: 0 10px 40px rgba(255, 0, 0, 0.4); cursor: pointer; transition: 0.1s; display: flex; align-items: center; justify-content: center; text-align: center; letter-spacing: 1px;}
+        .sos-btn:active { transform: scale(0.95); background: #880000; }
+        
+        .vol-btn { width: 180px; padding: 15px; border-radius: 4px; background: rgba(17, 204, 17, 0.1); border: 2px solid var(--success); color: var(--success); font-size: 14px; font-weight: bold; font-family: inherit; box-shadow: 0 5px 20px rgba(17, 204, 17, 0.2); cursor: pointer; transition: 0.1s; display: none; }
+
+        /* YENİ: SITREP (DURUM RAPORU) BUTONU */
+        .sitrep-btn { width: 180px; padding: 12px; border-radius: 4px; background: rgba(255, 170, 0, 0.1); border: 2px solid var(--warning); color: var(--warning); font-size: 13px; font-family: inherit; cursor: pointer; transition: 0.2s; font-weight: bold; margin-top: 5px;}
+        .sitrep-btn:active { background: var(--warning); color: #000; }
+
+        .silent-btn { width: 180px; padding: 12px; border-radius: 4px; background: #1a1a1a; border: 1px solid #333; color: #888; font-size: 12px; font-family: inherit; cursor: pointer; transition: 0.2s; font-weight: bold;}
+        .silent-btn:active { background: #000; color: #fff; }
+
+        #stealth-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 9999; flex-direction: column; justify-content: center; align-items: center;}
+        .stealth-text { color: #333; font-size: 10px; opacity: 0.5; user-select: none;}
+
+        #volunteer-alert { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(200, 0, 0, 0.95); z-index: 10000; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 30px; box-sizing: border-box;}
+        .vol-alert-title { color: #fff; font-size: 32px; font-weight: bold; margin-bottom: 20px; animation: blink 1s infinite; text-shadow: 0 0 20px #fff; letter-spacing: 2px;}
+        .vol-alert-text { color: #fff; font-size: 16px; margin-bottom: 40px; line-height: 1.5;}
+        .vol-alert-btn { background: #fff; color: #cc0000; padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.5);}
+
+        /* YENİ: SITREP (DURUM RAPORU) MODALI VE ASKERİ UYARI */
+        #sitrep-modal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 10000; flex-direction: column; justify-content: flex-start; align-items: center; padding: 20px; box-sizing: border-box; overflow-y: auto;}
+        .sitrep-box { width: 100%; max-width: 400px; background: #111; border: 2px solid var(--warning); border-radius: 5px; padding: 20px; margin-top: 20px; box-shadow: 0 0 30px rgba(255, 170, 0, 0.2);}
+        
+        .sitrep-warning-header { color: var(--danger); font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 15px; border-bottom: 2px solid var(--danger); padding-bottom: 10px; animation: blink 1.5s infinite;}
+        .sitrep-warning-text { color: #ccc; font-size: 12px; line-height: 1.6; text-align: justify; margin-bottom: 20px; background: rgba(255, 0, 0, 0.1); padding: 10px; border-left: 3px solid var(--danger);}
+        
+        .sitrep-textarea { width: 100%; height: 120px; background: #000; color: #0f0; border: 1px solid var(--warning); border-radius: 4px; padding: 10px; font-family: monospace; font-size: 14px; outline: none; box-sizing: border-box; resize: none;}
+        .sitrep-textarea::placeholder { color: #055; }
+        
+        .sitrep-action-btns { display: flex; gap: 10px; margin-top: 15px; }
+        .sitrep-action-btns button { flex: 1; padding: 12px; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; font-family: inherit;}
+        .btn-cancel-sitrep { background: #333; color: #fff; }
+        .btn-send-sitrep { background: var(--warning); color: #000; box-shadow: 0 0 15px rgba(255, 170, 0, 0.4);}
+        .btn-send-sitrep:active { transform: scale(0.95); }
+
+    </style>
+</head>
+<body>
+
+    <div id="desktop-ui">
+        <div id="map"></div>
+        
+        <div class="panel top-bar">
+            <div>
+                <div class="logo">ATLAS C4ISR</div>
+                <div style="font-size:11px; color:#aaa; letter-spacing:1px;">TAKTİK SAHA KOORDİNASYON SİSTEMİ</div>
+            </div>
+            <div class="network-stats">
+                <button id="demo-btn" class="demo-btn" onclick="startDemoMode()">🎬 TATBİKAT: SINIR ÖTESİ</button>
+                <div class="stat-box">
+                    <div style="font-size: 10px; color:#aaa;">İZLEMEDEKİ PERSONEL</div>
+                    <div class="stat-val" id="active-users">0</div>
+                </div>
+                <div class="stat-box" style="border-color: var(--success);">
+                    <div style="font-size: 10px; color:#aaa;">AKTİF MÜDAHALE</div>
+                    <div class="stat-val" id="vol-count" style="color: var(--success);">0</div>
+                </div>
+                <div class="stat-box" style="border-color: var(--danger);">
+                    <div style="font-size: 10px; color:#aaa;">ACİL KOD (SOS)</div>
+                    <div class="stat-val" id="sos-count" style="color: var(--danger);">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel region-panel">
+            <div style="font-size:11px; color:#aaa; font-weight:bold; border-bottom:1px solid #333; padding-bottom:5px; margin-bottom:5px;">TAKTİK SEKTÖRLER (HARİTA)</div>
+            <button class="region-btn" onclick="changeRegion(39.9208, 32.8541, 11)">📍 Merkez Karargah (Ankara)</button>
+            <button class="region-btn" onclick="changeRegion(36.26, 36.48, 13)">📍 Suriye Sınır Hattı (Hatay)</button>
+            <button class="region-btn" onclick="changeRegion(37.41, 42.49, 12)">📍 Kuzey Irak Hattı (Şırnak)</button>
+            <button class="region-btn" onclick="changeRegion(40.75, 30.38, 13)">📍 Tatbikat Alanı (Sakarya)</button>
+        </div>
+
+        <div class="panel log-panel">
+            <div style="border-bottom:1px solid var(--primary); padding-bottom:5px; font-weight:bold; letter-spacing:1px;">CANLI AĞ AKIŞI (LOG)</div>
+            <div class="log-content" id="log-container">
+                <div class="log-entry">Atlas C2 (Command & Control) çevrimiçi. Bağlantılar dinleniyor...</div>
+            </div>
+        </div>
+
+        <div class="panel qr-panel">
+            <div style="font-size:12px; color:#aaa; font-weight:bold;">SAHA AĞINA KATILIM</div>
+            <div class="qr-box">
+                <img id="qr-image" src="" alt="Yükleniyor...">
+            </div>
+        </div>
+
+        <div id="cctv-panel">
+            <div class="cctv-header">
+                <span id="cctv-title">BAĞLANTI: BİLİNMEYEN</span>
+                <button class="cctv-close" onclick="closeLiveFeed()">✖</button>
+            </div>
+            <div class="cctv-overlay"></div>
+            <div class="cctv-crosshair"></div>
+            <div class="cctv-rec">● REC</div>
+            <video id="cctv-video" class="cctv-image" autoplay playsinline muted></video>
+            <div class="cctv-footer">
+                HUD.SYS.V2 - <span id="cctv-type">SAHA KAMERASI</span><br>
+                COORD: <span id="cctv-coord">36.26, 36.48</span> | UPLINK: STABLE
+            </div>
+        </div>
+
+        <div id="hazard-modal" class="panel">
+            <div class="hazard-title">TAKTİK TEHLİKE BÖLGESİ</div>
+            <select id="hazard-type" class="hazard-select">
+                <option value="fire">🔴 Düşman Teması (Sıcak Bölge)</option>
+                <option value="collapse">🟠 Mayınlı / EYP Alanı</option>
+                <option value="flood">🔵 Topçu Ateşi Bölgesi</option>
+                <option value="chemical">🟣 KBRN (Kimyasal) Tehdit</option>
+            </select>
+            <div class="hazard-btn-group">
+                <button class="hazard-btn hazard-btn-cancel" onclick="closeHazardModal()">İptal</button>
+                <button class="hazard-btn hazard-btn-create" onclick="createHazardZone()">Bölgeyi İşaretle</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mobile-login-ui">
+        <div class="login-box">
+            <div class="login-title">ATLAS SAHA AĞI</div>
+            <div class="login-desc">Görev alanına giriş yapmak için askeri kimlik ve teçhizat bilgilerinizi doğrulayın.</div>
+            
+            <div class="form-group">
+                <label>PERSONEL ADI</label>
+                <input type="text" id="reg-name" placeholder="Örn: Ahmet" required>
+            </div>
+            <div class="form-group">
+                <label>SOYADI / ÇAĞRI KODU</label>
+                <input type="text" id="reg-surname" placeholder="Örn: Doğan-1" required>
+            </div>
+            <div class="form-group">
+                <label>SİSTEM KİMLİK NO (15 Hane)</label>
+                <input type="text" id="reg-tc" placeholder="Örn: 123456789012345" maxlength="15" required>
+            </div>
+
+            <label class="checkbox-label cam-label">
+                <input type="checkbox" id="reg-camera"> 
+                📷 Cihaz Kamerası Aktarımı (Komuta İzni)
+            </label>
+            
+            <label class="checkbox-label">
+                <input type="checkbox" id="reg-volunteer" onchange="toggleRoleSelect()"> 
+                Aktif müdahale ve sevk görevlerine hazır mısınız?
+            </label>
+
+            <div id="role-group" style="display:none; margin-top: 15px;">
+                <div class="form-group">
+                    <label style="color:var(--success);">BİRLİK / SINIF (Birden fazla seçilebilir)</label>
+                    <div class="skills-grid" id="skills-container">
+                        <label class="skill-cb"><input type="checkbox" value="Piyade"> 🪖 Piyade</label>
+                        <label class="skill-cb"><input type="checkbox" value="Sıhhiye"> ⚕️ Sıhhiye</label>
+                        <label class="skill-cb"><input type="checkbox" value="Özel Kuvvetler"> 🦅 Özel Kuvvetler</label>
+                        <label class="skill-cb"><input type="checkbox" value="İstihbarat"> 👁️ İstihbarat</label>
+                        <label class="skill-cb"><input type="checkbox" value="Zırhlı Birlik"> 🛡️ Zırhlı Birlik</label>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 20px;">
+                    <label style="color:var(--primary);">MEVCUT TEÇHİZAT ENVANTERİ</label>
+                    <div class="skills-grid" id="equip-container">
+                        <label class="skill-cb equip-cb"><input type="checkbox" value="Mühimmat"> 🎯 Mühimmat</label>
+                        <label class="skill-cb equip-cb"><input type="checkbox" value="Gece Görüş"> 🥽 Gece Görüş</label>
+                        <label class="skill-cb equip-cb"><input type="checkbox" value="Zırhlı Araç"> 🚙 Zırhlı Araç</label>
+                        <label class="skill-cb equip-cb"><input type="checkbox" value="Telsiz"> 📻 Şifreli Telsiz</label>
+                        <label class="skill-cb equip-cb"><input type="checkbox" value="Taktik İHA"> 🚁 Taktik İHA</label>
+                        <label class="skill-cb equip-cb"><input type="checkbox" value="Ağır Silah"> ⚔️ Ağır Silah</label>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="join-btn" onclick="saveProfileAndJoin()">AĞA BAĞLAN</button>
+        </div>
+    </div>
+
+    <div id="mobile-ui">
+        <div id="stealth-overlay" onmousedown="startExitStealth()" onmouseup="cancelExitStealth()" ontouchstart="startExitStealth()" ontouchend="cancelExitStealth()">
+            <div class="stealth-text">Sızma modundan çıkmak için 3 saniye basılı tutun</div>
+        </div>
+
+        <div id="volunteer-alert">
+            <div class="vol-alert-title">🚨 GÖREV EMRİ 🚨</div>
+            <div class="vol-alert-text">Size <b id="alert-dist" style="font-size:36px; color:#ffcc00;"></b> metre mesafede bir taktik acil durum var!<br><br>Komuta merkezi cihazınıza güvenli intikal rotası yükledi.</div>
+            <button class="vol-alert-btn" onclick="closeVolunteerAlert()">GÖREVİ ONAYLA</button>
+        </div>
+
+        <div id="sitrep-modal">
+            <div class="sitrep-box">
+                <div class="sitrep-warning-header">⚠️ GİZLİLİK VE GÜVENLİK UYARISI ⚠️</div>
+                <div class="sitrep-warning-text">
+                    Bu alan, <b>T.C. Kriz Yönetim ve Taktik Saha Ağı'na (ATLAS C4ISR)</b> doğrudan bağlı şifreli bir raporlama (SITREP) hattıdır.<br><br>
+                    Sistemin asılsız ihbar, yanıltıcı istihbarat veya sohbet amacıyla meşgul edilmesi durumunda cihaz konumunuz üzerinden yasal işlem başlatılacaktır.<br><br>
+                    <b>Yalnızca acil ve kritik saha istihbaratını (Düşman durumu, lojistik eksiklik vb.) giriniz.</b>
+                </div>
+                <textarea id="sitrep-input" class="sitrep-textarea" placeholder="Taktik durum raporunuzu buraya giriniz..."></textarea>
+                <div class="sitrep-action-btns">
+                    <button class="btn-cancel-sitrep" onclick="closeSitrep()">İPTAL</button>
+                    <button class="btn-send-sitrep" onclick="sendSitrep()">RAPORU İLET</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mobile-title">ATLAS SAHA AĞI</div>
+        <div class="mobile-id" id="my-civilian-id">ID: Yükleniyor...</div>
+        <div class="mobile-role" id="my-role-display"></div>
+        <div class="mobile-equip" id="my-equip-display"></div>
+        
+        <div class="mobile-status" id="mob-status">Bağlantı Kuruluyor...</div>
+        
+        <div class="btn-container">
+            <select id="sos-reason" class="reason-select">
+                <option value="Belirtilmedi">KOD SEÇ (İsteğe Bağlı)</option>
+                <option value="Çatışma / Ateş Altında">💥 Çatışma / Ateş Altında</option>
+                <option value="Sıhhiye Tahliyesi (MEDEVAC)">🚁 Sıhhiye Tahliyesi (MEDEVAC)</option>
+                <option value="Mühimmat İkmali">📦 Acil Mühimmat İkmali</option>
+                <option value="Düşman Sızması">⚠️ Düşman Sızması Tespit Edildi</option>
+            </select>
+
+            <button class="sos-btn" id="btn-send" disabled onclick="toggleLiveTracking('sos')">ACİL DURUM<br>(S.O.S)</button>
+            <button class="vol-btn" id="btn-volunteer" onclick="toggleLiveTracking('volunteer')">GÖREVE HAZIR<br><span style="font-size:11px; font-weight:normal;">(Konum Yayınla)</span></button>
+            
+            <button class="sitrep-btn" id="btn-sitrep" disabled onclick="openSitrep()">SITREP / DURUM RAPORU İLET</button>
+
+            <button class="silent-btn" id="btn-silent" onclick="toggleLiveTracking('silent_sos')">TELSİZ SUSMASI (Sızma/Gizli Mod)</button>
+        </div>
+        
+        <div class="mobile-info" id="mob-info">
+            * Telsiz Susması: Ekranı kapatır ve düşman hattı gerisinde sessizce merkeze sinyal gönderir.
+        </div>
+    </div>
+
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const mode = urlParams.get('mode');
+    const targetPeerId = urlParams.get('targetId');
+
+    let peer = null;
+    let map = null;
+    
+    let connectedCivilians = {}; 
+    let sosCounter = 0;
+    let volCounter = 0;
+    let pendingHazardCoords = null;
+    let activeHazardZones = {}; 
+    let demoInterval = null; 
+
+    // Mobil Değişkenler
+    let userProfile = { name: "", surname: "", tcNo: "", isVolunteer: false, role: "", equipment: "", cameraAllowed: false };
+    let myConn = null;
+    window.localStream = null; 
+
+    if (mode === 'mobile') {
+        checkMobileLogin();
+    } else {
+        initDesktopApp();
+    }
+
+    function maskTC(tc) {
+        if (!tc || tc.length < 15) return "****************";
+        return tc.substring(0, 5) + "******" + tc.substring(11, 15);
+    }
+
+    function generateFakeTC() {
+        let tc = "";
+        for(let i=0; i<15; i++) tc += Math.floor(Math.random() * 10).toString();
+        return tc;
+    }
+
+    function toggleRoleSelect() {
+        const isVol = document.getElementById('reg-volunteer').checked;
+        document.getElementById('role-group').style.display = isVol ? 'block' : 'none';
+    }
+
+    function checkMobileLogin() {
+        const savedProfile = localStorage.getItem('atlas_v15_profile');
+        if (savedProfile) {
+            userProfile = JSON.parse(savedProfile);
+            initMobileApp();
+        } else {
+            document.getElementById('mobile-login-ui').style.display = 'flex';
+        }
+    }
+
+    function saveProfileAndJoin() {
+        const name = document.getElementById('reg-name').value.trim();
+        const surname = document.getElementById('reg-surname').value.trim();
+        const tcNo = document.getElementById('reg-tc').value.trim();
+        const isVolunteer = document.getElementById('reg-volunteer').checked;
+        const camAllowed = document.getElementById('reg-camera').checked; 
+        
+        let selectedSkills = [];
+        let selectedEquip = [];
+
+        if (isVolunteer) {
+            document.querySelectorAll('#skills-container input[type="checkbox"]:checked').forEach((cb) => selectedSkills.push(cb.value));
+            document.querySelectorAll('#equip-container input[type="checkbox"]:checked').forEach((cb) => selectedEquip.push(cb.value));
+        }
+        
+        const roleStr = isVolunteer ? (selectedSkills.length > 0 ? selectedSkills.join(', ') : "Destek Unsuru") : "İzole Personel";
+        const equipStr = isVolunteer ? (selectedEquip.length > 0 ? selectedEquip.join(', ') : "Yok") : "Yok";
+
+        if (name === "" || surname === "" || tcNo.length < 15) { alert("Lütfen formdaki tüm askeri bilgileri eksiksiz doldurun."); return; }
+
+        userProfile = { name: name, surname: surname, tcNo: tcNo, isVolunteer: isVolunteer, role: roleStr, equipment: equipStr, cameraAllowed: camAllowed };
+        localStorage.setItem('atlas_v15_profile', JSON.stringify(userProfile));
+
+        document.getElementById('mobile-login-ui').style.display = 'none';
+        initMobileApp();
+    }
+
+    // --- BİLGİSAYAR: CANLI YAYIN ---
+    let coordInterval = null;
+
+    window.openLiveFeed = function(name, equipment, peerId) {
+        document.getElementById('cctv-panel').style.display = 'block';
+        document.getElementById('cctv-title').innerText = "BAĞLANTI: " + name.toUpperCase();
+        
+        let typeLabel = document.getElementById('cctv-type');
+        typeLabel.innerText = equipment.includes('İHA') ? "TAKTİK İHA GÖRÜNTÜSÜ" : "PERSONEL KASK KAMERASI";
+
+        let vid = document.getElementById('cctv-video');
+        vid.srcObject = null; 
+        
+        if (connectedCivilians[peerId] && connectedCivilians[peerId].conn) {
+            connectedCivilians[peerId].conn.send({ type: 'request_camera' });
+            logMessage(`[C2 İLETİŞİM] ${name} unsurundan canlı kamera görüntüsü talep edildi.`, false, true);
+        }
+
+        if(coordInterval) clearInterval(coordInterval);
+        coordInterval = setInterval(() => {
+            let fakeLat = (36.26 + Math.random() * 0.005).toFixed(4);
+            let fakeLng = (36.48 + Math.random() * 0.005).toFixed(4);
+            document.getElementById('cctv-coord').innerText = `${fakeLat}, ${fakeLng}`;
+        }, 800);
+    }
+
+    window.closeLiveFeed = function() {
+        document.getElementById('cctv-panel').style.display = 'none';
+        document.getElementById('cctv-video').srcObject = null;
+        if(coordInterval) clearInterval(coordInterval);
+    }
+
+
+    function initDesktopApp() {
+        document.getElementById('desktop-ui').style.display = 'block';
+
+        map = L.map('map', { zoomControl: false }).setView([40.75, 30.38], 13); 
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+        map.on('contextmenu', function(e) {
+            pendingHazardCoords = e.latlng;
+            document.getElementById('hazard-modal').style.display = 'block';
+        });
+
+        const commandId = 'atlas-command-' + Math.floor(Math.random() * 10000);
+        peer = new Peer(commandId);
+
+        peer.on('open', function(id) {
+            logMessage(`Ağ Kimliği (Node ID): ${id}`);
+            const mobileUrl = window.location.href.split('?')[0] + '?mode=mobile&targetId=' + id;
+            document.getElementById('qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
+        });
+
+        peer.on('call', function(call) {
+            call.answer(); 
+            call.on('stream', function(remoteStream) {
+                let vid = document.getElementById('cctv-video');
+                vid.srcObject = remoteStream;
+                vid.play();
+                logMessage(`<span style="color:#00ffff">[CCTV AKTİF] Canlı kamera veri akışı sağlandı.</span>`);
+            });
+        });
+
+        peer.on('connection', function(conn) {
+            connectedCivilians[conn.peer] = { 
+                conn: conn, marker: null, routeLine: null,
+                profile: { name: "Bilinmeyen", surname: "Kişi", tcNo: "", isVolunteer: false, role: "", equipment: "Yok" }, 
+                dispatchSent: false, reached: false 
+            };
+            
+            conn.on('open', function() { updateStats(); });
+
+            conn.on('data', function(data) {
+                if (data.type === 'profile') {
+                    connectedCivilians[conn.peer].profile = data;
+                    const fullName = `${data.name} ${data.surname}`;
+                    let roleTag = data.isVolunteer ? ` <span style="color:var(--success)">[GÖREVLİ: ${data.role}]</span>` : "";
+                    logMessage(`<span class="log-id">[${fullName}]</span> ağa katıldı.${roleTag}`);
+                }
+                else if(data.type === 'sos' || data.type === 'volunteer' || data.type === 'silent_sos') {
+                    handleSignal(conn.peer, data.lat, data.lng, data.type, data.reason);
+                }
+                // YENİ: SITREP (DURUM RAPORU) KARŞILAMA VE DAKTİLO EFEKTİ
+                else if(data.type === 'sitrep') {
+                    const fullName = `${connectedCivilians[conn.peer].profile.name} ${connectedCivilians[conn.peer].profile.surname}`;
+                    
+                    // Log ekranına belirgin yaz
+                    logMessage(`<br><span style="color:var(--warning); font-size:14px; font-family:monospace; background:rgba(255,170,0,0.1); padding:5px; border-left:3px solid var(--warning); display:block;"><b>[SITREP İSTİHBARATI]</b> ${fullName} raporluyor:<br>"${data.text}"</span><br>`, false, false);
+                    
+                    speakAlert(`${connectedCivilians[conn.peer].profile.name} unsurundan saha durum raporu alındı.`);
+                    
+                    // Haritada pop-up güncelle
+                    if (connectedCivilians[conn.peer].marker) {
+                        connectedCivilians[conn.peer].marker.bindPopup(`<b>${fullName}</b><br><b style="color:var(--warning);">SITREP:</b> ${data.text}`).openPopup();
+                        // Haritayı o rapora kaydır
+                        map.flyTo([data.lat, data.lng], 15, { animate: true });
+                    }
+                }
+            });
+
+            conn.on('close', function() {
+                if(connectedCivilians[conn.peer]) {
+                    if(connectedCivilians[conn.peer].marker) map.removeLayer(connectedCivilians[conn.peer].marker);
+                    if(connectedCivilians[conn.peer].routeLine) map.removeLayer(connectedCivilians[conn.peer].routeLine);
+                    const fullName = `${connectedCivilians[conn.peer].profile.name} ${connectedCivilians[conn.peer].profile.surname}`;
+                    delete connectedCivilians[conn.peer];
+                    updateStats();
+                    logMessage(`<span class="log-id">[${fullName}]</span> ağdan koptu.`);
+                }
+            });
+        });
+    }
+
+    function changeRegion(lat, lng, zoom) {
+        map.flyTo([lat, lng], zoom, { animate: true, duration: 2 });
+        logMessage(`[SİSTEM UYARISI] Harita odak noktası değiştirildi: ${lat.toFixed(2)}, ${lng.toFixed(2)}`, false, false);
+    }
+
+    function findNearestVolunteer(sosLatLng) {
+        let nearestBotId = null;
+        let minDistance = Infinity;
+
+        Object.keys(connectedCivilians).forEach(id => {
+            let bot = connectedCivilians[id];
+            if (bot.profile.isVolunteer && bot.marker && !bot.target && bot.type === 'volunteer') {
+                let botLatLng = bot.marker.getLatLng();
+                let dist = map.distance(sosLatLng, botLatLng);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    nearestBotId = id;
+                }
+            }
+        });
+        return { id: nearestBotId, distance: minDistance };
+    }
+
+    function startDemoMode() {
+        document.getElementById('demo-btn').style.display = 'none';
+        logMessage("<br><span style='color:#ffcc00; font-size:16px; font-weight:bold;'>[TATBİKAT] Sınır Ötesi Operasyon Senaryosu Başlatıldı...</span>", true);
+        speakAlert("Sınır ötesi taktik senaryo başlatıldı. Harita güncelleniyor.");
+
+        const baseLat = 36.26;
+        const baseLng = 36.48;
+        changeRegion(baseLat, baseLng, 13);
+
+        Object.keys(connectedCivilians).forEach(k => {
+            if(k.startsWith('bot-')) {
+                if(connectedCivilians[k].marker) map.removeLayer(connectedCivilians[k].marker);
+                if(connectedCivilians[k].routeLine) map.removeLayer(connectedCivilians[k].routeLine);
+                delete connectedCivilians[k];
+            }
+        });
+        if(demoInterval) clearInterval(demoInterval);
+
+        const names = ["Kemal", "Turan", "Yavuz", "Bozkurt", "Pars", "Doğan", "Şahin", "Gökhan", "Alp", "Mete"];
+        
+        for(let i=0; i<8; i++) {
+            let id = 'bot-vol-' + i;
+            let botLat = baseLat + (Math.random() - 0.5) * 0.08;
+            let botLng = baseLng + (Math.random() - 0.5) * 0.08;
+            let hasVehicle = (i % 2 === 0);
+            
+            connectedCivilians[id] = { 
+                conn: { peer: id, send: function(){} }, marker: null, routeLine: null,
+                profile: { name: names[i], surname: "Birlik", tcNo: generateFakeTC(), isVolunteer: true, role: hasVehicle ? "Zırhlı Birlik, Piyade" : "Sıhhiye", equipment: hasVehicle ? "Zırhlı Araç, Ağır Silah" : "Mühimmat" }, 
+                lat: botLat, lng: botLng, type: 'volunteer', dispatchSent: false, reached: false
+            };
+            
+            setTimeout(() => {
+                logMessage(`<span class="log-id">[${names[i]} Birliği]</span> ağa katıldı. <span style="color:var(--success)">[AKTİF]</span>`);
+                handleSignal(id, botLat, botLng, 'volunteer'); 
+            }, Math.random() * 2000);
+        }
+        
+        setTimeout(updateStats, 2500);
+
+        setTimeout(() => {
+            createMockHazard(baseLat + 0.02, baseLng + 0.02, 'fire', 'Sıcak Temas Noktası', '#ff3333');
+            let sosId = 'bot-sos-1';
+            let sosLat = baseLat + 0.02; let sosLng = baseLng + 0.02;
+            
+            connectedCivilians[sosId] = { conn: {peer: sosId, send: function(){}}, marker: null, profile: { name: "Gözlem", surname: "Tim-1", tcNo: generateFakeTC(), isVolunteer: false, role: "İstihbarat", equipment: "Telsiz" }, lat: sosLat, lng: sosLng, type: 'sos', dispatchSent: false };
+            handleSignal(sosId, sosLat, sosLng, 'sos', 'Sıhhiye Tahliyesi (MEDEVAC)');
+        }, 5000);
+
+        setTimeout(() => {
+            createMockHazard(baseLat - 0.03, baseLng - 0.01, 'collapse', 'Pusu Bölgesi', '#ff8800');
+            let sosId = 'bot-sos-2';
+            let sosLat = baseLat - 0.03; let sosLng = baseLng - 0.01;
+            
+            connectedCivilians[sosId] = { conn: {peer: sosId, send: function(){}}, marker: null, profile: { name: "Keskin", surname: "Nişancı", tcNo: generateFakeTC(), isVolunteer: false, role: "Özel Kuvvetler", equipment: "Gece Görüş" }, lat: sosLat, lng: sosLng, type: 'sos', dispatchSent: false };
+            handleSignal(sosId, sosLat, sosLng, 'sos', 'Çatışma / Ateş Altında');
+        }, 20000);
+
+        demoInterval = setInterval(() => {
+            Object.keys(connectedCivilians).forEach(id => {
+                let bot = connectedCivilians[id];
+                if (bot.type === 'volunteer' && bot.marker && bot.target && !bot.reached) {
+                    
+                    let dx = bot.target.lng - bot.lng; 
+                    let dy = bot.target.lat - bot.lat;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    let speed = bot.profile.equipment.includes("Zırhlı Araç") ? 0.000025 : 0.000010; 
+
+                    if (dist > speed) { 
+                        bot.lat += (dy/dist) * speed; 
+                        bot.lng += (dx/dist) * speed;
+                        
+                        if(bot.routeLine) {
+                            bot.routeLine.setLatLngs([[bot.lat, bot.lng], [bot.target.lat, bot.target.lng]]);
+                        }
+                    } else {
+                        bot.lat = bot.target.lat;
+                        bot.lng = bot.target.lng;
+                        bot.reached = true;
+                        
+                        if(bot.routeLine) map.removeLayer(bot.routeLine); 
+
+                        let vTag = bot.profile.equipment.includes("Zırhlı Araç") ? " 🛡️ (Zırhlı Birim)" : "";
+                        logMessage(`<br><span style="color:var(--success); font-size:14px; font-weight:bold;">[MÜDAHALE BAŞLADI] ${bot.profile.name} ${bot.profile.surname}${vTag} sıcak bölgeye ulaştı!</span><br>`, false, true);
+                        speakAlert(`Destek unsuru operasyon bölgesine ulaştı.`);
+                    }
+                    bot.marker.setLatLng([bot.lat, bot.lng]);
+                }
+            });
+        }, 50); 
+    }
+
+    function createMockHazard(lat, lng, type, label, color) {
+        const zoneId = 'zone-sim-' + Math.random(); 
+        const circle = L.circle([lat, lng], { color: color, fillColor: color, fillOpacity: 0.4, radius: 500 }).addTo(map);
+        activeHazardZones[zoneId] = circle;
+    }
+
+    function closeHazardModal() { document.getElementById('hazard-modal').style.display = 'none'; pendingHazardCoords = null; }
+
+    function createHazardZone() {
+        if (!pendingHazardCoords) return;
+        const type = document.getElementById('hazard-type').value;
+        let color = '#ff3333'; let label = 'Düşman Teması';
+        if (type === 'fire') { color = '#ff3333'; label = 'Düşman Teması (Sıcak Bölge)'; }
+        else if (type === 'collapse') { color = '#ff8800'; label = 'Mayınlı / EYP Alanı'; }
+        else if (type === 'flood') { color = '#0088ff'; label = 'Topçu Ateşi Bölgesi'; }
+        else if (type === 'chemical') { color = '#aa00ff'; label = 'KBRN Tehdidi'; }
+
+        const zoneId = 'zone-' + Date.now(); 
+        const circle = L.circle(pendingHazardCoords, { color: color, fillColor: color, fillOpacity: 0.4, radius: 500 }).addTo(map);
+        const popupContent = `<div style="text-align:center; font-family:monospace;"><b>${label}</b><br><button onclick="removeHazardZone('${zoneId}')" style="margin-top:10px; cursor:pointer; background:#222; color:#fff; border:1px solid #555;">İptal Et</button></div>`;
+        circle.bindPopup(popupContent);
+        activeHazardZones[zoneId] = circle;
+
+        logMessage(`<span style="color:${color}; font-weight:bold;">[TAKTİK BİLDİRİM]</span> ${label} işaretlendi.`, true);
+        speakAlert(`Haritada yeni bir risk alanı tanımlandı.`);
+        closeHazardModal();
+    }
+
+    window.removeHazardZone = function(zoneId) {
+        if (activeHazardZones[zoneId]) {
+            map.removeLayer(activeHazardZones[zoneId]);
+            delete activeHazardZones[zoneId];
+            map.closePopup();
+        }
+    };
+
+    function handleSignal(peerId, lat, lng, type, reason = "Belirtilmedi") {
+        const civilian = connectedCivilians[peerId];
+        const fullName = `${civilian.profile.name} ${civilian.profile.surname}`;
+        
+        if(civilian.marker) { 
+            civilian.marker.setLatLng([lat, lng]); 
+        } else {
+            const maskedTC = maskTC(civilian.profile.tcNo);
+            const equipHtml = civilian.profile.equipment !== "Yok" ? `<br>Teçhizat: <b style="color:#0088ff;">${civilian.profile.equipment}</b>` : "";
+            const reasonHtml = reason !== "Belirtilmedi" ? `<br>Kod: <b style="color:#ffcc00;">${reason}</b>` : "";
+            
+            const camBtn = `<br><button onclick="window.openLiveFeed('${fullName}', '${civilian.profile.equipment}', '${peerId}')" style="margin-top:10px; width:100%; background:var(--primary); color:#fff; border:none; padding:8px; border-radius:3px; cursor:pointer; font-weight:bold;">📸 Canlı Yayına Bağlan</button>`;
+
+            if (type === 'sos') {
+                sosCounter++; document.getElementById('sos-count').innerText = sosCounter;
+                logMessage(`<span class="log-id">[${fullName}]</span> ACİL DURUM BİLDİRDİ! [Kod: ${reason}]`, true);
+                const sosIcon = L.divIcon({ className: 'custom-radar-icon', html: '<div class="radar-ping-sos"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+                civilian.marker = L.marker([lat, lng], { icon: sosIcon, zIndexOffset: 1000 }).addTo(map);
+                civilian.marker.bindPopup(`<div style="font-family:monospace;"><b>${fullName}</b><br>ID: ${maskedTC}<br>Durum: <b style="color:red;">KIRMIZI KOD</b>${reasonHtml}<br>Sınıf: ${civilian.profile.role}${equipHtml}${camBtn}</div>`).openPopup();
+                speakAlert(`Dikkat. Acil durum sinyali alındı. Olası sebep: ${reason}`);
+            
+            } else if (type === 'silent_sos') {
+                sosCounter++; document.getElementById('sos-count').innerText = sosCounter;
+                logMessage(`<span class="log-id">[${fullName}]</span> SIZMA/TELSİZ SUSMASI! [Kod: ${reason}]`, false, false);
+                document.getElementById('log-container').lastChild.classList.add('stealth');
+                
+                const stealthIcon = L.divIcon({ className: 'custom-radar-icon', html: '<div class="radar-ping-stealth"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+                civilian.marker = L.marker([lat, lng], { icon: stealthIcon, zIndexOffset: 1000 }).addTo(map);
+                civilian.marker.bindPopup(`<div style="font-family:monospace;"><b>${fullName}</b><br>ID: ${maskedTC}<br>Durum: <b style="color:var(--stealth);">TELSİZ SUSMASI / SIZMA</b>${camBtn}</div>`).openPopup();
+                speakAlert(`Kritik Uyarı. Gizli telsiz susması sinyali alındı.`);
+
+            } else if (type === 'volunteer') {
+                volCounter++; document.getElementById('vol-count').innerText = volCounter;
+                if(!peerId.startsWith('bot-')) logMessage(`<span class="log-id">[${fullName}]</span> sahada aktif.`, false, true);
+                
+                const volIcon = L.divIcon({ className: 'custom-radar-icon', html: '<div class="radar-ping-vol"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+                civilian.marker = L.marker([lat, lng], { icon: volIcon }).addTo(map);
+                civilian.marker.bindPopup(`<div style="font-family:monospace;"><b>${fullName}</b><br>ID: ${maskedTC}<br>Durum: <b style="color:green;">AKTİF UNSUR</b><br>Sınıf: <b>${civilian.profile.role}</b>${equipHtml}${camBtn}</div>`).openPopup();
+            }
+            map.flyTo([lat, lng], 13, { animate: true, duration: 1.5 });
+        }
+
+        if ((type === 'sos' || type === 'silent_sos') && !civilian.dispatchSent) {
+            civilian.dispatchSent = true; 
+            const sosLatLng = L.latLng(lat, lng);
+
+            const nearest = findNearestVolunteer(sosLatLng);
+
+            if (nearest.id) {
+                let vol = connectedCivilians[nearest.id];
+                
+                vol.target = { lat: lat, lng: lng };
+                vol.reached = false;
+                
+                let startLatLng = vol.marker.getLatLng();
+                vol.routeLine = L.polyline([startLatLng, sosLatLng], {
+                    color: 'var(--route)', weight: 3, dashArray: '10, 10', opacity: 0.8
+                }).addTo(map);
+
+                vol.conn.send({ type: 'dispatch_alert', distance: Math.round(nearest.distance), lat: lat, lng: lng });
+                
+                logMessage(`[C2 OTONOM] Sisteme en yakın unsur (${vol.profile.name}) tespit edildi. Rota çizilerek intikal emri verildi.`, false, true);
+            } else {
+                logMessage(`<span style="color:red">Uyarı: Bölgede destek unsuru bulunamadı!</span>`);
+            }
+        }
+    }
+
+    function updateStats() { document.getElementById('active-users').innerText = Object.keys(connectedCivilians).length; }
+
+    function logMessage(text, isAlert=false, isVol=false) {
+        const container = document.getElementById('log-container');
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        if(isAlert) entry.classList.add('alert');
+        if(isVol) entry.classList.add('volunteer');
+        const time = new Date().toLocaleTimeString();
+        entry.innerHTML = `[${time}] ${text}`;
+        container.appendChild(entry);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function speakAlert(text) {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'tr-TR'; msg.rate = 1.0;
+            window.speechSynthesis.speak(msg);
+        }
+    }
+
+    // ==========================================
+    //         MOBİL (SİVİL) YAZILIMI
+    // ==========================================
+    function initMobileApp() {
+        document.getElementById('mobile-ui').style.display = 'flex';
+        const statusText = document.getElementById('mob-status');
+        
+        document.getElementById('my-civilian-id').innerText = `${userProfile.name} ${userProfile.surname}`;
+        
+        if (userProfile.isVolunteer) {
+            document.getElementById('my-role-display').innerText = `BİRLİK/SINIF:\n${userProfile.role}`;
+            if (userProfile.equipment !== "Yok") {
+                document.getElementById('my-equip-display').innerText = `KAYITLI TEÇHİZAT:\n${userProfile.equipment}`;
+            }
+            document.getElementById('btn-volunteer').style.display = 'block';
+        }
+
+        if(userProfile.cameraAllowed) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+            .then(stream => {
+                window.localStream = stream; 
+                statusText.innerText = "KAMERA HAZIR";
+            }).catch(err => {
+                console.error("Kamera izni alınamadı", err);
+            });
+        }
+
+        if (!targetPeerId) { statusText.innerText = "HATA: Ağ Bulunamadı."; return; }
+
+        peer = new Peer();
+
+        peer.on('open', function(id) {
+            statusText.innerText += " | Ağa bağlanılıyor...";
+            myConn = peer.connect(targetPeerId);
+
+            myConn.on('open', function() {
+                statusText.innerText = "AĞ BAĞLANTISI AKTİF";
+                statusText.style.color = "var(--primary)";
+                
+                document.getElementById('btn-send').disabled = false;
+                document.getElementById('btn-silent').disabled = false;
+                document.getElementById('btn-sitrep').disabled = false; // YENİ: SITREP BUTONU AKTİF
+                if(userProfile.isVolunteer) document.getElementById('btn-volunteer').disabled = false;
+                
+                myConn.send({ type: 'profile', name: userProfile.name, surname: userProfile.surname, tcNo: userProfile.tcNo, isVolunteer: userProfile.isVolunteer, role: userProfile.role, equipment: userProfile.equipment });
+            });
+
+            myConn.on('data', function(data) {
+                if (data.type === 'dispatch_alert') {
+                    document.getElementById('alert-dist').innerText = data.distance;
+                    document.getElementById('volunteer-alert').style.display = 'flex';
+                    if(navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 1000]);
+                    
+                    if ('speechSynthesis' in window) {
+                        const msg = new SpeechSynthesisUtterance("Sistem size güvenli bir intikal rotası oluşturdu.");
+                        msg.lang = 'tr-TR'; window.speechSynthesis.speak(msg);
+                    }
+                }
+                
+                if (data.type === 'request_camera') {
+                    if (window.localStream) {
+                        peer.call(targetPeerId, window.localStream); 
+                    } else {
+                        alert("Komuta merkezi canlı yayın talep etti ancak cihazınız izin vermedi.");
+                    }
+                }
+            });
+
+            myConn.on('close', function() {
+                statusText.innerText = "BAĞLANTI KOPTU!";
+                statusText.style.color = "var(--danger)";
+                document.getElementById('btn-send').disabled = true;
+                document.getElementById('btn-silent').disabled = true;
+                document.getElementById('btn-sitrep').disabled = true;
+                if(userProfile.isVolunteer) document.getElementById('btn-volunteer').disabled = true;
+                if(isTracking) {
+                    if(stealthModeActive) cancelExitStealth(); 
+                    toggleLiveTracking();
+                }
+            });
+        });
+    }
+
+    function closeVolunteerAlert() {
+        document.getElementById('volunteer-alert').style.display = 'none';
+        if(navigator.vibrate) navigator.vibrate(0); 
+    }
+
+    // --- YENİ: SITREP FONKSİYONLARI ---
+    function openSitrep() {
+        document.getElementById('sitrep-modal').style.display = 'flex';
+        document.getElementById('sitrep-input').value = ""; // Temizle
+    }
+
+    function closeSitrep() {
+        document.getElementById('sitrep-modal').style.display = 'none';
+    }
+
+    function sendSitrep() {
+        const text = document.getElementById('sitrep-input').value.trim();
+        if (text.length < 5) {
+            alert("Lütfen geçerli ve detaylı bir durum raporu giriniz.");
+            return;
+        }
+
+        // Koordinatı al ve gönder
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    if (myConn && myConn.open) {
+                        myConn.send({ type: 'sitrep', text: text, lat: lat, lng: lng });
+                        alert("SITREP başarıyla komuta merkezine iletildi.");
+                        closeSitrep();
+                    }
+                },
+                (error) => {
+                    alert("Konum alınamadığı için SITREP iletilemiyor. Lütfen GPS izni verin.");
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        }
+    }
+
+
+    let watchId = null;
+    let isTracking = false;
+    let stealthModeActive = false;
+    let stealthTimeout = null;
+
+    function toggleLiveTracking(signalType) {
+        const btnSos = document.getElementById('btn-send');
+        const btnVol = document.getElementById('btn-volunteer');
+        const btnSilent = document.getElementById('btn-silent');
+        const btnSitrep = document.getElementById('btn-sitrep');
+        const statusText = document.getElementById('mob-status');
+        
+        let reasonBox = document.getElementById('sos-reason');
+        let reason = reasonBox ? reasonBox.value : "Belirtilmedi";
+
+        if (isTracking) {
+            navigator.geolocation.clearWatch(watchId);
+            isTracking = false;
+            stealthModeActive = false;
+            
+            document.getElementById('stealth-overlay').style.display = 'none';
+
+            btnSos.innerHTML = "ACİL DURUM<br>(S.O.S)"; btnSos.style.background = ""; btnSos.disabled = false;
+            btnSilent.disabled = false;
+            btnSitrep.disabled = false;
+            
+            btnVol.innerHTML = "GÖREVE HAZIR<br><span style='font-size:11px; font-weight:normal;'>(Konum Yayınla)</span>";
+            btnVol.style.background = ""; btnVol.style.color = "var(--success)";
+            if(userProfile.isVolunteer) btnVol.disabled = false;
+
+            statusText.innerText = "KONUM YAYINI DURDURULDU";
+            statusText.style.color = "#888";
+            return;
+        }
+
+        isTracking = true;
+        
+        if (signalType === 'silent_sos') {
+            stealthModeActive = true;
+            if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            document.getElementById('stealth-overlay').style.display = 'flex';
+        } else {
+            const activeBtn = signalType === 'sos' ? btnSos : btnVol;
+            btnSos.disabled = true; btnVol.disabled = true; btnSilent.disabled = true; btnSitrep.disabled = true;
+            activeBtn.disabled = false;
+            activeBtn.innerHTML = "YAYINI<br>KES";
+            
+            if (signalType === 'sos') {
+                activeBtn.style.background = "#cc0000";
+                statusText.innerText = "KIRMIZI KOD YAYINI AKTİF!";
+                statusText.style.color = "var(--danger)";
+            } else {
+                activeBtn.style.background = "var(--success)"; activeBtn.style.color = "#fff";
+                statusText.innerText = "SAHADA AKTİF DEVREDE!";
+                statusText.style.color = "var(--success)";
+            }
+        }
+
+        if (navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    if (myConn && myConn.open) {
+                        myConn.send({ type: signalType, lat: lat, lng: lng, reason: reason });
+                    }
+                },
+                (error) => {
+                    alert("Konum alınamıyor. Lütfen GPS izni verin.");
+                    toggleLiveTracking(signalType);
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        } else {
+            alert("Cihazınız konum desteklemiyor.");
+            toggleLiveTracking(signalType);
+        }
+    }
+
+    function startExitStealth() {
+        if(!stealthModeActive) return;
+        stealthTimeout = setTimeout(() => {
+            if(navigator.vibrate) navigator.vibrate(500); 
+            toggleLiveTracking('silent_sos');
+        }, 3000);
+    }
+
+    function cancelExitStealth() {
+        if(stealthTimeout) {
+            clearTimeout(stealthTimeout);
+            stealthTimeout = null;
+        }
+    }
+
+</script>
+</body>
+</html>
